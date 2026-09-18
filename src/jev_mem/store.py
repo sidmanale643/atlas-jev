@@ -33,6 +33,12 @@ def _as_float(value: object, default: float = 0.0) -> float:
     return float(value)
 
 
+def _id_clause(memory_id: str) -> str:
+    if not memory_id or any(char not in "0123456789abcdef" for char in memory_id):
+        raise ValueError(f"Invalid memory id: {memory_id}")
+    return f"id = '{memory_id}'"
+
+
 def _ensure_columns(table, defaults: dict[str, str]) -> None:
     names = set(table.schema.names)
     additions = {name: expr for name, expr in defaults.items() if name not in names}
@@ -84,7 +90,7 @@ class MemoryStore:
 
     def update(self, memory_id: str, text: str, memory_type: str, vector: list[float]) -> None:
         self._table.update(
-            where=f"id = '{memory_id}'",
+            where=_id_clause(memory_id),
             values={
                 "text": text,
                 "type": memory_type,
@@ -94,7 +100,7 @@ class MemoryStore:
         )
 
     def delete(self, memory_id: str) -> None:
-        self._table.delete(f"id = '{memory_id}'")
+        self._table.delete(_id_clause(memory_id))
 
     def search(self, vector: list[float], limit: int = 5) -> list[MemoryHit]:
         if self._table.count_rows() == 0:
