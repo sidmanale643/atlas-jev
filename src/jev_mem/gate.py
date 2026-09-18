@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from typesafe_sdk import Choice, Noul, TypeSafeClient
+from typesafe_sdk import Choice, Noul
 
+from jev_mem.jev import DEFAULT_JEV_MODEL, JevClient
 from jev_mem.store import MemoryHit
 
 
@@ -14,16 +15,15 @@ class GateDecision:
 
 
 class MemoryGate:
-    """Jev (TypeSafe System One) judgments over candidate memories.
+    """Jev judgments over candidate memories, via OpenRouter Decisions API.
 
     One request per candidate, with speculative fan-out: the operation and
     target questions are answered even when the candidate turns out not to be
     worth remembering, and the code simply ignores those answers.
     """
 
-    def __init__(self, model: str | None = None) -> None:
-        self._client = TypeSafeClient()
-        self._model = model
+    def __init__(self, api_key: str, model: str = DEFAULT_JEV_MODEL) -> None:
+        self._client = JevClient(api_key, model)
 
     def evaluate(self, candidate: str, memory_type: str, similar: list[MemoryHit]) -> GateDecision:
         state: dict = {
@@ -72,24 +72,22 @@ class MemoryGate:
                 },
             )
 
-        kwargs = {"state": state, "questions": questions}
-        if self._model:
-            kwargs["model"] = self._model
-        response = self._client.system_one(**kwargs)
+        answers = self._client.decide(state, questions)
 
-        worth = response.answers["worth_remembering"].noul
-        operation_answer = response.answers["operation"]
+        worth = float(answers["worth_remembering"]["noul"])
+        operation_answer = answers["operation"]
+        operation = operation_answer["choice"]
 
         target_id: str | None = None
-        if similar and operation_answer.choice == "update":
-            target_answer = response.answers["target_memory"]
-            if target_answer.choice.startswith("memory_"):
-                index = int(target_answer.choice.removeprefix("memory_"))
+        if similar and operation == "update":
+            target_answer = answers["target_memory"]
+            if target_answer["choice"].startswith("memory_"):
+                index = int(target_answer["choice"].removeprefix("memory_"))
                 target_id = similar[index].memory.id
 
         return GateDecision(
             worth=worth,
-            operation=operation_answer.choice,
-            operation_confidence=operation_answer.confidence,
+            operation=operation,
+            operation_confidence=float(operation_answer.get("confidence") or 0.0),
             target_id=target_id,
         )

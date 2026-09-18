@@ -1,7 +1,7 @@
 [project]
 name = "jev-mem"
 version = "0.1.0"
-description = "Memory mechanism: OpenRouter LLM extraction, Jev (TypeSafe System One) gating, local LanceDB vector store"
+description = "Memory mechanism: OpenRouter LLM extraction, Jev gating via OpenRouter Decisions API, local LanceDB vector store"
 requires-python = ">=3.11"
 dependencies = [
     "typesafe-sdk",

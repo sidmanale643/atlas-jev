@@ -22,16 +22,17 @@ class IngestReport:
 
 
 class MemoryPipeline:
-    """Extract memories with an OpenRouter LLM, gate them with Jev, store in LanceDB."""
+    """Extract memories with an OpenRouter LLM, gate them with OpenRouter Jev, store in LanceDB."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or load_settings()
-        if not self._settings.openrouter_api_key:
+        api_key = self._settings.openrouter_api_key
+        if not api_key:
             raise RuntimeError("OPENROUTER_API_KEY is not set (see .env.example)")
-        self._llm = LLMService(self._settings.openrouter_api_key, self._settings.openrouter_model)
+        self._llm = LLMService(api_key, self._settings.openrouter_model)
         self._embedder = Embedder(self._settings.embedding_model)
         self._store = MemoryStore(self._settings.db_path, self._embedder.dim)
-        self._gate = MemoryGate(self._settings.typesafe_model)
+        self._gate = MemoryGate(api_key, self._settings.jev_model)
 
     def add(self, text: str) -> IngestReport:
         candidates = self._llm.extract_memories(text)
