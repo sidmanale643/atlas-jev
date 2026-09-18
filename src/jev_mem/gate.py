@@ -25,18 +25,20 @@ class MemoryGate:
         self._client = TypeSafeClient()
         self._model = model
 
-    def evaluate(self, candidate: str, similar: list[MemoryHit]) -> GateDecision:
+    def evaluate(self, candidate: str, memory_type: str, similar: list[MemoryHit]) -> GateDecision:
         state: dict = {
             "candidate_memory": candidate,
+            "candidate_type": memory_type,
             "existing_memories": [hit.memory.text for hit in similar],
         }
 
         questions: dict = {
             "worth_remembering": Noul(
                 instructions=(
-                    "Is `candidate_memory` a durable fact, preference, goal, "
-                    "decision, or relationship worth keeping in long-term memory, "
-                    "rather than small talk or a transient detail?"
+                    "Is `candidate_memory` (classified as `candidate_type`) a "
+                    "durable fact, preference, goal, decision, or relationship "
+                    "worth keeping in long-term memory, rather than small talk "
+                    "or a transient detail?"
                 ),
             ),
             "operation": Choice(

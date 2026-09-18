@@ -25,7 +25,7 @@ def main() -> None:
             print("No memories extracted.")
         for result in report.results:
             print(
-                f"[{result.action_taken:7s}] {result.candidate} "
+                f"[{result.action_taken:7s}] ({result.candidate.type:12s}) {result.candidate.text} "
                 f"(worth={result.decision.worth:.2f}, op={result.decision.operation})"
             )
     elif args.command == "search":
@@ -33,13 +33,13 @@ def main() -> None:
         if not hits:
             print("No memories found.")
         for hit in hits:
-            print(f"[{hit.distance:.3f}] {hit.memory.text}")
+            print(f"[{hit.distance:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
     elif args.command == "list":
         memories = pipeline.list_memories()
         if not memories:
             print("No memories stored.")
         for memory in memories:
-            print(f"{memory.id[:8]}  {memory.text}")
+            print(f"{memory.id[:8]}  ({memory.type:12s}) {memory.text}")
 
 
 if __name__ == "__main__":
