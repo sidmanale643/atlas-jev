@@ -1,7 +1,11 @@
 import tempfile
 import unittest
+from types import SimpleNamespace
 
-from atlas_jev.store import IngestMeta, MemoryStore
+from atlas_jev.gate import GateDecision
+from atlas_jev.llm import ExtractedMemory, MemoryType
+from atlas_jev.pipeline import MemoryPipeline
+from atlas_jev.store import IngestMeta, Memory, MemoryStore
 
 
 def _meta(
@@ -22,6 +26,68 @@ def _meta(
         target_id=target_id,
         conflict=conflict,
     )
+
+
+class _Embedder:
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[float(len(text)), 1.0] for text in texts]
+
+
+class _UpdateGate:
+    def evaluate(self, candidate: str, memory_type: str, similar: list) -> GateDecision:
+        return GateDecision(
+            worth=0.9,
+            operation="update",
+            operation_confidence=0.9,
+            target_id="existing-memory",
+        )
+
+
+class _RecordingStore:
+    def __init__(self) -> None:
+        self.added: list[str] = []
+        self.updated: list[str] = []
+
+    def search(self, vector: list[float], limit: int) -> list:
+        return []
+
+    def add(
+        self,
+        text: str,
+        memory_type: str,
+        vector: list[float],
+        meta: IngestMeta,
+    ) -> Memory:
+        self.added.append(text)
+        return Memory("new-memory", text, memory_type, 1.0, 1.0)
+
+    def update(self, memory_id: str, *args) -> Memory:
+        self.updated.append(memory_id)
+        raise AssertionError("compatible updates must not overwrite existing memories")
+
+
+class PipelineUpdateTests(unittest.TestCase):
+    def test_compatible_update_is_stored_as_a_separate_atomic_fact(self) -> None:
+        pipeline = object.__new__(MemoryPipeline)
+        pipeline._settings = SimpleNamespace(
+            recall_limit=5,
+            recall_distance_threshold=1.0,
+            worth_threshold=0.5,
+        )
+        pipeline._embedder = _Embedder()
+        pipeline._gate = _UpdateGate()
+        pipeline._store = _RecordingStore()
+        candidate = ExtractedMemory(
+            text="Pixel is a small black mutt.",
+            type=MemoryType.RELATIONSHIP,
+            confidence=0.9,
+        )
+
+        result = pipeline._process_candidate(candidate, "Pixel is small and black.", 10.0)
+
+        self.assertEqual(result.action_taken, "added")
+        self.assertEqual(pipeline._store.added, ["Pixel is a small black mutt."])
+        self.assertEqual(pipeline._store.updated, [])
 
 
 class StoreRevertTests(unittest.TestCase):

@@ -91,11 +91,9 @@ class MemoryPipeline:
             )
             return CandidateResult(candidate, decision, "updated", updated.id)
 
-        if decision.operation == "update" and decision.target_id:
-            updated = self._store.update(
-                decision.target_id, candidate.text, candidate.type, vector, meta
-            )
-            return CandidateResult(candidate, decision, "updated", updated.id)
+        if decision.operation == "update":
+            memory = self._store.add(candidate.text, candidate.type, vector, meta)
+            return CandidateResult(candidate, decision, "added", memory.id)
 
         if decision.operation in {"keep", "skip"}:
             self._store.record_skip(candidate.text, candidate.type, meta)

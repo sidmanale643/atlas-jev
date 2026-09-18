@@ -47,10 +47,13 @@ class MemoryGate:
                     "with `candidate_memory`?"
                 ),
                 criteria={
-                    "add": "No existing memory covers this; store it as new.",
+                    "add": (
+                        "No existing memory captures this fact. Compatible details "
+                        "about the same subject are separate facts; store them as new."
+                    ),
                     "update": (
-                        "An existing memory is about the same fact and should be "
-                        "revised or merged with the candidate."
+                        "The candidate adds compatible detail to an existing fact. "
+                        "Preserve the existing memory and store this detail separately."
                     ),
                     "skip": "An existing memory already captures this; do nothing.",
                 },
