@@ -18,6 +18,7 @@ class Settings:
     recall_limit: int
     recall_distance_threshold: float
     worth_threshold: float
+    conflict_threshold: float
 
 
 def load_settings() -> Settings:
@@ -30,4 +31,5 @@ def load_settings() -> Settings:
         recall_limit=int(os.environ.get("ATLAS_JEV_RECALL_LIMIT", "3")),
         recall_distance_threshold=float(os.environ.get("ATLAS_JEV_RECALL_DISTANCE", "0.85")),
         worth_threshold=float(os.environ.get("ATLAS_JEV_WORTH_THRESHOLD", "0.5")),
+        conflict_threshold=float(os.environ.get("ATLAS_JEV_CONFLICT_THRESHOLD", "0.7")),
     )

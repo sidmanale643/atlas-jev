@@ -32,7 +32,11 @@ class MemoryPipeline:
         self._llm = LLMService(api_key, self._settings.openrouter_model)
         self._embedder = Embedder(self._settings.embedding_model)
         self._store = MemoryStore(self._settings.db_path, self._embedder.dim)
-        self._gate = MemoryGate(api_key, self._settings.jev_model)
+        self._gate = MemoryGate(
+            api_key,
+            self._settings.jev_model,
+            self._settings.conflict_threshold,
+        )
 
     def add(self, text: str) -> IngestReport:
         candidates = self._llm.extract_memories(text)
@@ -81,13 +85,19 @@ class MemoryPipeline:
             self._store.record_skip(candidate.text, candidate.type, meta)
             return CandidateResult(candidate, decision, "skipped", None)
 
+        if decision.operation == "replace" and decision.target_id:
+            updated = self._store.update(
+                decision.target_id, candidate.text, candidate.type, vector, meta
+            )
+            return CandidateResult(candidate, decision, "updated", updated.id)
+
         if decision.operation == "update" and decision.target_id:
             updated = self._store.update(
                 decision.target_id, candidate.text, candidate.type, vector, meta
             )
             return CandidateResult(candidate, decision, "updated", updated.id)
 
-        if decision.operation == "skip":
+        if decision.operation in {"keep", "skip"}:
             self._store.record_skip(candidate.text, candidate.type, meta)
             return CandidateResult(candidate, decision, "skipped", None)
 
@@ -109,4 +119,5 @@ def _ingest_meta(
         operation=decision.operation,
         operation_confidence=decision.operation_confidence,
         target_id=decision.target_id,
+        conflict=decision.conflict,
     )

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from typesafe_sdk import Choice, Noul
+from typesafe_sdk import Choice, Noul, NoulCriteria
 
 from atlas_jev.jev import DEFAULT_JEV_MODEL, JevClient
 from atlas_jev.store import MemoryHit
@@ -12,11 +12,18 @@ class GateDecision:
     operation: str
     operation_confidence: float
     target_id: str | None
+    conflict: float = 0.0
 
 
 class MemoryGate:
-    def __init__(self, api_key: str, model: str = DEFAULT_JEV_MODEL) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_JEV_MODEL,
+        conflict_threshold: float = 0.7,
+    ) -> None:
         self._client = JevClient(api_key, model)
+        self._conflict_threshold = conflict_threshold
 
     def evaluate(self, candidate: str, memory_type: str, similar: list[MemoryHit]) -> GateDecision:
         state: dict = {
@@ -64,12 +71,50 @@ class MemoryGate:
                     "none": "The candidate does not update any existing memory.",
                 },
             )
+            for i in range(len(similar)):
+                questions[f"conflicts_{i}"] = Noul(
+                    instructions=(
+                        f"Does `candidate_memory` contradict `existing_memories[{i}]`? "
+                        "They conflict if they cannot both be true about the same "
+                        "subject at the same time. Compatible extra detail, a "
+                        "restatement, or a different subject is not a conflict."
+                    ),
+                    criteria=NoulCriteria(
+                        true=(
+                            "The two statements cannot both be true about the same "
+                            "subject at the same time."
+                        ),
+                        false=(
+                            "Compatible extra detail, a restatement of the same fact, "
+                            "a different subject, or no shared claim."
+                        ),
+                    ),
+                )
+            questions["resolution"] = Choice(
+                instructions=(
+                    "If `candidate_memory` contradicts an existing memory, how "
+                    "should the store resolve it? Prefer the more recent, more "
+                    "specific, or explicitly corrective statement."
+                ),
+                criteria={
+                    "replace": (
+                        "Overwrite the conflicting existing memory with the "
+                        "candidate. The candidate is a correction, a move, or a "
+                        "more recent statement of the same fact."
+                    ),
+                    "keep": (
+                        "Leave the existing memory unchanged and drop the "
+                        "candidate. The existing memory is still accurate."
+                    ),
+                },
+            )
 
         answers = self._client.decide(state, questions)
 
         worth = float(answers["worth_remembering"]["noul"])
         operation_answer = answers["operation"]
         operation = operation_answer["choice"]
+        operation_confidence = float(operation_answer.get("confidence") or 0.0)
 
         target_id: str | None = None
         if similar and operation == "update":
@@ -78,9 +123,25 @@ class MemoryGate:
                 index = int(target_answer["choice"].removeprefix("memory_"))
                 target_id = similar[index].memory.id
 
+        conflict = 0.0
+        if similar:
+            conflict, conflict_target_id = max(
+                (
+                    float(answers[f"conflicts_{i}"]["noul"]),
+                    hit.memory.id,
+                )
+                for i, hit in enumerate(similar)
+            )
+            if conflict >= self._conflict_threshold:
+                resolution_answer = answers["resolution"]
+                operation = resolution_answer["choice"]
+                operation_confidence = float(resolution_answer.get("confidence") or 0.0)
+                target_id = conflict_target_id
+
         return GateDecision(
             worth=worth,
             operation=operation,
-            operation_confidence=float(operation_answer.get("confidence") or 0.0),
+            operation_confidence=operation_confidence,
             target_id=target_id,
+            conflict=conflict,
         )

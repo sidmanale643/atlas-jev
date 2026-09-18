@@ -19,6 +19,7 @@ _MEMORY_COLUMN_DEFAULTS = {
     "target_id": "''",
     "previous_text": "''",
     "previous_type": "''",
+    "conflict": "0.0",
 }
 
 _EVENT_COLUMN_DEFAULTS = {
@@ -31,6 +32,7 @@ _EVENT_COLUMN_DEFAULTS = {
     "target_id": "''",
     "previous_text": "''",
     "previous_type": "''",
+    "conflict": "0.0",
 }
 
 
@@ -43,6 +45,7 @@ class IngestMeta:
     operation: str
     operation_confidence: float
     target_id: str | None = None
+    conflict: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,7 @@ class Memory:
     target_id: str | None = None
     previous_text: str | None = None
     previous_type: str | None = None
+    conflict: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,7 @@ class MemoryEvent:
     target_id: str | None
     previous_text: str | None
     previous_type: str | None
+    conflict: float
     created_at: float
 
 
@@ -132,6 +137,7 @@ def _memories_schema(dim: int) -> pa.Schema:
             pa.field("target_id", pa.string()),
             pa.field("previous_text", pa.string()),
             pa.field("previous_type", pa.string()),
+            pa.field("conflict", pa.float64()),
         ]
     )
 
@@ -153,6 +159,7 @@ def _events_schema() -> pa.Schema:
             pa.field("target_id", pa.string()),
             pa.field("previous_text", pa.string()),
             pa.field("previous_type", pa.string()),
+            pa.field("conflict", pa.float64()),
             pa.field("created_at", pa.float64()),
         ]
     )
@@ -174,6 +181,7 @@ def _memory_from_row(row: dict) -> Memory:
         target_id=_optional_str(row.get("target_id")),
         previous_text=_optional_str(row.get("previous_text")),
         previous_type=_optional_str(row.get("previous_type")),
+        conflict=_as_float(row.get("conflict")),
     )
 
 
@@ -193,6 +201,7 @@ def _event_from_row(row: dict) -> MemoryEvent:
         target_id=_optional_str(row.get("target_id")),
         previous_text=_optional_str(row.get("previous_text")),
         previous_type=_optional_str(row.get("previous_type")),
+        conflict=_as_float(row.get("conflict")),
         created_at=_as_float(row.get("created_at")),
     )
 
@@ -226,6 +235,7 @@ class MemoryStore:
             operation=meta.operation,
             operation_confidence=meta.operation_confidence,
             target_id=meta.target_id,
+            conflict=meta.conflict,
         )
         self._table.add([self._memory_row(memory, vector)])
         self._append_event(
@@ -265,6 +275,7 @@ class MemoryStore:
                 "target_id": meta.target_id or existing.id,
                 "previous_text": existing.text,
                 "previous_type": existing.type,
+                "conflict": meta.conflict,
             },
         )
         updated = self.get(existing.id)
@@ -326,6 +337,7 @@ class MemoryStore:
                 operation="revert",
                 operation_confidence=1.0,
                 target_id=existing.id,
+                conflict=existing.conflict,
             ),
             previous_text=existing.text,
             previous_type=existing.type,
@@ -400,6 +412,7 @@ class MemoryStore:
             "target_id": memory.target_id or "",
             "previous_text": memory.previous_text or "",
             "previous_type": memory.previous_type or "",
+            "conflict": memory.conflict,
         }
 
     def _append_event(
@@ -428,6 +441,7 @@ class MemoryStore:
             target_id=meta.target_id,
             previous_text=previous_text,
             previous_type=previous_type,
+            conflict=meta.conflict,
             created_at=time.time(),
         )
         self._events.add(
@@ -447,6 +461,7 @@ class MemoryStore:
                     "target_id": event.target_id or "",
                     "previous_text": event.previous_text or "",
                     "previous_type": event.previous_type or "",
+                    "conflict": event.conflict,
                     "created_at": event.created_at,
                 }
             ]
