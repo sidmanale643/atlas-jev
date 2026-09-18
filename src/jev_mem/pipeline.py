@@ -54,6 +54,15 @@ class MemoryPipeline:
     def history(self, memory_id: str | None = None) -> list[MemoryEvent]:
         return self._store.list_events(memory_id)
 
+    def revert(self, memory_id: str) -> Memory:
+        memory = self._store.get(memory_id)
+        if memory is None:
+            raise RuntimeError(f"Memory {memory_id} not found")
+        if not memory.previous_text:
+            raise RuntimeError(f"Memory {memory.id} has no previous value to revert")
+        [vector] = self._embedder.embed([memory.previous_text])
+        return self._store.revert(memory.id, vector)
+
     def _process_candidate(
         self,
         candidate: ExtractedMemory,

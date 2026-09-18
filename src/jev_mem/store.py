@@ -16,6 +16,8 @@ _MEMORY_COLUMN_DEFAULTS = {
     "operation": "''",
     "operation_confidence": "0.0",
     "target_id": "''",
+    "previous_text": "''",
+    "previous_type": "''",
 }
 
 
@@ -42,6 +44,8 @@ class Memory:
     operation: str = ""
     operation_confidence: float = 0.0
     target_id: str | None = None
+    previous_text: str | None = None
+    previous_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,8 @@ class MemoryEvent:
     operation: str
     operation_confidence: float
     target_id: str | None
+    previous_text: str | None
+    previous_type: str | None
     created_at: float
 
 
@@ -107,23 +113,9 @@ def _memories_schema(dim: int) -> pa.Schema:
             pa.field("operation", pa.string()),
             pa.field("operation_confidence", pa.float64()),
             pa.field("target_id", pa.string()),
+            pa.field("previous_text", pa.string()),
+            pa.field("previous_type", pa.string()),
         ]
-    )
-
-
-def _memory_from_row(row: dict) -> Memory:
-    return Memory(
-        id=row["id"],
-        text=row["text"],
-        type=row["type"],
-        created_at=_as_float(row.get("created_at")),
-        updated_at=_as_float(row.get("updated_at")),
-        source_text=str(row.get("source_text") or ""),
-        extracted_at=_as_float(row.get("extracted_at"), _as_float(row.get("created_at"))),
-        confidence=_as_float(row.get("confidence")),
-        operation=str(row.get("operation") or ""),
-        operation_confidence=_as_float(row.get("operation_confidence")),
-        target_id=_optional_str(row.get("target_id")),
     )
 
 
@@ -141,8 +133,28 @@ def _events_schema() -> pa.Schema:
             pa.field("operation", pa.string()),
             pa.field("operation_confidence", pa.float64()),
             pa.field("target_id", pa.string()),
+            pa.field("previous_text", pa.string()),
+            pa.field("previous_type", pa.string()),
             pa.field("created_at", pa.float64()),
         ]
+    )
+
+
+def _memory_from_row(row: dict) -> Memory:
+    return Memory(
+        id=row["id"],
+        text=row["text"],
+        type=row["type"],
+        created_at=_as_float(row.get("created_at")),
+        updated_at=_as_float(row.get("updated_at")),
+        source_text=str(row.get("source_text") or ""),
+        extracted_at=_as_float(row.get("extracted_at"), _as_float(row.get("created_at"))),
+        confidence=_as_float(row.get("confidence")),
+        operation=str(row.get("operation") or ""),
+        operation_confidence=_as_float(row.get("operation_confidence")),
+        target_id=_optional_str(row.get("target_id")),
+        previous_text=_optional_str(row.get("previous_text")),
+        previous_type=_optional_str(row.get("previous_type")),
     )
 
 
@@ -159,6 +171,8 @@ def _event_from_row(row: dict) -> MemoryEvent:
         operation=str(row.get("operation") or ""),
         operation_confidence=_as_float(row.get("operation_confidence")),
         target_id=_optional_str(row.get("target_id")),
+        previous_text=_optional_str(row.get("previous_text")),
+        previous_type=_optional_str(row.get("previous_type")),
         created_at=_as_float(row.get("created_at")),
     )
 
@@ -228,6 +242,8 @@ class MemoryStore:
                 "operation": meta.operation,
                 "operation_confidence": meta.operation_confidence,
                 "target_id": meta.target_id or existing.id,
+                "previous_text": existing.text,
+                "previous_type": existing.type,
             },
         )
         updated = self.get(existing.id)
@@ -239,6 +255,8 @@ class MemoryStore:
             candidate_type=memory_type,
             action_taken="updated",
             meta=meta,
+            previous_text=existing.text,
+            previous_type=existing.type,
         )
         return updated
 
@@ -250,6 +268,47 @@ class MemoryStore:
             action_taken="skipped",
             meta=meta,
         )
+
+    def revert(self, memory_id: str, restored_vector: list[float]) -> Memory:
+        existing = self.get(memory_id)
+        if existing is None:
+            raise RuntimeError(f"Memory {memory_id} not found")
+        if not existing.previous_text:
+            raise RuntimeError(f"Memory {existing.id} has no previous value to revert")
+        restored_type = existing.previous_type or existing.type
+        now = time.time()
+        self._table.update(
+            where=_id_clause(existing.id),
+            values={
+                "text": existing.previous_text,
+                "type": restored_type,
+                "vector": restored_vector,
+                "updated_at": now,
+                "operation": "revert",
+                "previous_text": existing.text,
+                "previous_type": existing.type,
+            },
+        )
+        reverted = self.get(existing.id)
+        if reverted is None:
+            raise RuntimeError(f"Memory {existing.id} vanished after revert")
+        self._append_event(
+            memory_id=reverted.id,
+            candidate_text=reverted.text,
+            candidate_type=reverted.type,
+            action_taken="reverted",
+            meta=IngestMeta(
+                source_text=existing.source_text,
+                extracted_at=existing.extracted_at,
+                confidence=existing.confidence,
+                operation="revert",
+                operation_confidence=1.0,
+                target_id=existing.id,
+            ),
+            previous_text=existing.text,
+            previous_type=existing.type,
+        )
+        return reverted
 
     def delete(self, memory_id: str) -> None:
         memory = self.get(memory_id)
@@ -316,6 +375,8 @@ class MemoryStore:
             "operation": memory.operation,
             "operation_confidence": memory.operation_confidence,
             "target_id": memory.target_id or "",
+            "previous_text": memory.previous_text or "",
+            "previous_type": memory.previous_type or "",
         }
 
     def _append_event(
@@ -326,6 +387,8 @@ class MemoryStore:
         candidate_type: str,
         action_taken: str,
         meta: IngestMeta,
+        previous_text: str | None = None,
+        previous_type: str | None = None,
     ) -> MemoryEvent:
         event = MemoryEvent(
             id=uuid.uuid4().hex,
@@ -339,6 +402,8 @@ class MemoryStore:
             operation=meta.operation,
             operation_confidence=meta.operation_confidence,
             target_id=meta.target_id,
+            previous_text=previous_text,
+            previous_type=previous_type,
             created_at=time.time(),
         )
         self._events.add(
@@ -355,6 +420,8 @@ class MemoryStore:
                     "operation": event.operation,
                     "operation_confidence": event.operation_confidence,
                     "target_id": event.target_id or "",
+                    "previous_text": event.previous_text or "",
+                    "previous_type": event.previous_type or "",
                     "created_at": event.created_at,
                 }
             ]
