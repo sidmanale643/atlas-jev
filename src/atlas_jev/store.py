@@ -13,6 +13,19 @@ _MEMORY_COLUMN_DEFAULTS = {
     "source_text": "''",
     "extracted_at": "0.0",
     "confidence": "0.0",
+    "extraction_confidence": "0.0",
+    "operation": "''",
+    "operation_confidence": "0.0",
+    "target_id": "''",
+    "previous_text": "''",
+    "previous_type": "''",
+}
+
+_EVENT_COLUMN_DEFAULTS = {
+    "source_text": "''",
+    "extracted_at": "0.0",
+    "worth": "0.0",
+    "extraction_confidence": "0.0",
     "operation": "''",
     "operation_confidence": "0.0",
     "target_id": "''",
@@ -26,6 +39,7 @@ class IngestMeta:
     source_text: str
     extracted_at: float
     confidence: float
+    extraction_confidence: float
     operation: str
     operation_confidence: float
     target_id: str | None = None
@@ -41,6 +55,7 @@ class Memory:
     source_text: str = ""
     extracted_at: float = 0.0
     confidence: float = 0.0
+    extraction_confidence: float = 0.0
     operation: str = ""
     operation_confidence: float = 0.0
     target_id: str | None = None
@@ -58,6 +73,7 @@ class MemoryEvent:
     extracted_at: float
     action_taken: str
     worth: float
+    extraction_confidence: float
     operation: str
     operation_confidence: float
     target_id: str | None
@@ -110,6 +126,7 @@ def _memories_schema(dim: int) -> pa.Schema:
             pa.field("source_text", pa.string()),
             pa.field("extracted_at", pa.float64()),
             pa.field("confidence", pa.float64()),
+            pa.field("extraction_confidence", pa.float64()),
             pa.field("operation", pa.string()),
             pa.field("operation_confidence", pa.float64()),
             pa.field("target_id", pa.string()),
@@ -130,6 +147,7 @@ def _events_schema() -> pa.Schema:
             pa.field("extracted_at", pa.float64()),
             pa.field("action_taken", pa.string()),
             pa.field("worth", pa.float64()),
+            pa.field("extraction_confidence", pa.float64()),
             pa.field("operation", pa.string()),
             pa.field("operation_confidence", pa.float64()),
             pa.field("target_id", pa.string()),
@@ -150,6 +168,7 @@ def _memory_from_row(row: dict) -> Memory:
         source_text=str(row.get("source_text") or ""),
         extracted_at=_as_float(row.get("extracted_at"), _as_float(row.get("created_at"))),
         confidence=_as_float(row.get("confidence")),
+        extraction_confidence=_as_float(row.get("extraction_confidence")),
         operation=str(row.get("operation") or ""),
         operation_confidence=_as_float(row.get("operation_confidence")),
         target_id=_optional_str(row.get("target_id")),
@@ -168,6 +187,7 @@ def _event_from_row(row: dict) -> MemoryEvent:
         extracted_at=_as_float(row.get("extracted_at")),
         action_taken=str(row.get("action_taken") or ""),
         worth=_as_float(row.get("worth")),
+        extraction_confidence=_as_float(row.get("extraction_confidence")),
         operation=str(row.get("operation") or ""),
         operation_confidence=_as_float(row.get("operation_confidence")),
         target_id=_optional_str(row.get("target_id")),
@@ -187,6 +207,7 @@ class MemoryStore:
             self._table = self._db.create_table(TABLE_NAME, schema=_memories_schema(dim))
         if EVENTS_TABLE_NAME in self._db.table_names():
             self._events = self._db.open_table(EVENTS_TABLE_NAME)
+            _ensure_columns(self._events, _EVENT_COLUMN_DEFAULTS)
         else:
             self._events = self._db.create_table(EVENTS_TABLE_NAME, schema=_events_schema())
 
@@ -201,6 +222,7 @@ class MemoryStore:
             source_text=meta.source_text,
             extracted_at=meta.extracted_at,
             confidence=meta.confidence,
+            extraction_confidence=meta.extraction_confidence,
             operation=meta.operation,
             operation_confidence=meta.operation_confidence,
             target_id=meta.target_id,
@@ -237,6 +259,7 @@ class MemoryStore:
                 "source_text": meta.source_text,
                 "extracted_at": meta.extracted_at,
                 "confidence": meta.confidence,
+                "extraction_confidence": meta.extraction_confidence,
                 "operation": meta.operation,
                 "operation_confidence": meta.operation_confidence,
                 "target_id": meta.target_id or existing.id,
@@ -299,6 +322,7 @@ class MemoryStore:
                 source_text=existing.source_text,
                 extracted_at=existing.extracted_at,
                 confidence=existing.confidence,
+                extraction_confidence=existing.extraction_confidence,
                 operation="revert",
                 operation_confidence=1.0,
                 target_id=existing.id,
@@ -370,6 +394,7 @@ class MemoryStore:
             "source_text": memory.source_text,
             "extracted_at": memory.extracted_at,
             "confidence": memory.confidence,
+            "extraction_confidence": memory.extraction_confidence,
             "operation": memory.operation,
             "operation_confidence": memory.operation_confidence,
             "target_id": memory.target_id or "",
@@ -397,6 +422,7 @@ class MemoryStore:
             extracted_at=meta.extracted_at,
             action_taken=action_taken,
             worth=meta.confidence,
+            extraction_confidence=meta.extraction_confidence,
             operation=meta.operation,
             operation_confidence=meta.operation_confidence,
             target_id=meta.target_id,
@@ -415,6 +441,7 @@ class MemoryStore:
                     "extracted_at": event.extracted_at,
                     "action_taken": event.action_taken,
                     "worth": event.worth,
+                    "extraction_confidence": event.extraction_confidence,
                     "operation": event.operation,
                     "operation_confidence": event.operation_confidence,
                     "target_id": event.target_id or "",

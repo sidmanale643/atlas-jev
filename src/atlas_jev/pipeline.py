@@ -75,7 +75,7 @@ class MemoryPipeline:
         ]
 
         decision = self._gate.evaluate(candidate.text, candidate.type, similar)
-        meta = _ingest_meta(source_text, extracted_at, decision)
+        meta = _ingest_meta(source_text, extracted_at, candidate, decision)
 
         if decision.worth < self._settings.worth_threshold:
             self._store.record_skip(candidate.text, candidate.type, meta)
@@ -95,11 +95,17 @@ class MemoryPipeline:
         return CandidateResult(candidate, decision, "added", memory.id)
 
 
-def _ingest_meta(source_text: str, extracted_at: float, decision: GateDecision) -> IngestMeta:
+def _ingest_meta(
+    source_text: str,
+    extracted_at: float,
+    candidate: ExtractedMemory,
+    decision: GateDecision,
+) -> IngestMeta:
     return IngestMeta(
         source_text=source_text,
         extracted_at=extracted_at,
         confidence=decision.worth,
+        extraction_confidence=candidate.confidence,
         operation=decision.operation,
         operation_confidence=decision.operation_confidence,
         target_id=decision.target_id,

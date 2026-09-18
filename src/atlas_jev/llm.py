@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 from openai import OpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MemoryType(StrEnum):
@@ -16,12 +16,29 @@ class MemoryType(StrEnum):
 
 
 class ExtractedMemory(BaseModel):
-    text: str
-    type: MemoryType
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(
+        description="A single self-contained long-term memory, pronouns resolved."
+    )
+    type: MemoryType = Field(
+        description=(
+            "preference, fact, goal, relationship, decision, plan, constraint, or other."
+        )
+    )
+    confidence: float = Field(
+        ge=0,
+        le=1,
+        description="How sure this is a durable, correctly typed memory, from 0 to 1.",
+    )
 
 
 class MemoryExtraction(BaseModel):
-    memories: list[ExtractedMemory]
+    model_config = ConfigDict(extra="forbid")
+
+    memories: list[ExtractedMemory] = Field(
+        description="Discrete long-term memories. Empty if nothing is worth remembering."
+    )
 
 
 EXTRACTION_SYSTEM_PROMPT = """\
@@ -42,7 +59,9 @@ the original text.
   - decision: a choice the user has made
   - plan: an intended future action or event
   - constraint: a limitation or requirement the user must work within
-  - other: worth remembering, but none of the above fit"""
+  - other: worth remembering, but none of the above fit
+- Set confidence from 0 to 1 for how sure you are that the statement is a \
+durable, correctly typed memory grounded in the source text."""
 
 
 class LLMService:
@@ -62,16 +81,28 @@ class LLMService:
         return response.choices[0].message.content or ""
 
     def extract_memories(self, text: str) -> list[ExtractedMemory]:
-        parsed = self._client.chat.completions.parse(
+        response = self._client.chat.completions.create(
             model=self._model,
             messages=[
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
                 {"role": "user", "content": text},
             ],
-            response_format=MemoryExtraction,
             temperature=0,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "memory_extraction",
+                    "strict": True,
+                    "schema": MemoryExtraction.model_json_schema(),
+                },
+            },
+            extra_body={"provider": {"require_parameters": True}},
         )
-        extraction = parsed.choices[0].message.parsed
-        if extraction is None:
-            return []
-        return [m for m in extraction.memories if m.text.strip()]
+        message = response.choices[0].message
+        if message.refusal:
+            raise RuntimeError(f"Memory extraction refused: {message.refusal}")
+        content = message.content
+        if not content:
+            raise RuntimeError("Memory extraction returned no structured output")
+        extraction = MemoryExtraction.model_validate_json(content)
+        return [memory for memory in extraction.memories if memory.text.strip()]
