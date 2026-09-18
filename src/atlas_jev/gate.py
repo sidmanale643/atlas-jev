@@ -9,19 +9,12 @@ from atlas_jev.store import MemoryHit
 @dataclass(frozen=True)
 class GateDecision:
     worth: float
-    operation: str  # "add" | "update" | "skip"
+    operation: str
     operation_confidence: float
     target_id: str | None
 
 
 class MemoryGate:
-    """Jev judgments over candidate memories, via OpenRouter Decisions API.
-
-    One request per candidate, with speculative fan-out: the operation and
-    target questions are answered even when the candidate turns out not to be
-    worth remembering, and the code simply ignores those answers.
-    """
-
     def __init__(self, api_key: str, model: str = DEFAULT_JEV_MODEL) -> None:
         self._client = JevClient(api_key, model)
 

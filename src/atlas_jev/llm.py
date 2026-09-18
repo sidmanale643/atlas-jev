@@ -46,8 +46,6 @@ the original text.
 
 
 class LLMService:
-    """Chat LLM backed by OpenRouter, used for memory extraction."""
-
     def __init__(self, api_key: str, model: str) -> None:
         self._client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
         self._model = model

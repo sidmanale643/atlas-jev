@@ -34,8 +34,6 @@ def encode_question(question: Question) -> dict[str, Any]:
 
 
 class JevClient:
-    """TypeSafe Jev via OpenRouter's Decisions API."""
-
     def __init__(self, api_key: str, model: str = DEFAULT_JEV_MODEL) -> None:
         self._model = model
         self._http = httpx.Client(

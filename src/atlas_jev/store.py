@@ -178,8 +178,6 @@ def _event_from_row(row: dict) -> MemoryEvent:
 
 
 class MemoryStore:
-    """Local LanceDB-backed vector store for memories and gate audit events."""
-
     def __init__(self, db_path: str, dim: int) -> None:
         self._db = lancedb.connect(db_path)
         if TABLE_NAME in self._db.table_names():

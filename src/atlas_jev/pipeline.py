@@ -12,7 +12,7 @@ from atlas_jev.store import IngestMeta, Memory, MemoryEvent, MemoryHit, MemorySt
 class CandidateResult:
     candidate: ExtractedMemory
     decision: GateDecision
-    action_taken: str  # "added" | "updated" | "skipped"
+    action_taken: str
     memory_id: str | None
 
 
@@ -24,8 +24,6 @@ class IngestReport:
 
 
 class MemoryPipeline:
-    """Extract memories with an OpenRouter LLM, gate them with OpenRouter Jev, store in LanceDB."""
-
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or load_settings()
         api_key = self._settings.openrouter_api_key
