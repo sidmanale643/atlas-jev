@@ -1,10 +1,11 @@
+import time
 from dataclasses import dataclass, field
 
 from jev_mem.config import Settings, load_settings
 from jev_mem.embeddings import Embedder
 from jev_mem.gate import GateDecision, MemoryGate
 from jev_mem.llm import ExtractedMemory, LLMService
-from jev_mem.store import Memory, MemoryHit, MemoryStore
+from jev_mem.store import IngestMeta, Memory, MemoryHit, MemoryStore
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class CandidateResult:
 @dataclass(frozen=True)
 class IngestReport:
     source_text: str
+    extracted_at: float
     results: list[CandidateResult] = field(default_factory=list)
 
 
@@ -36,9 +38,10 @@ class MemoryPipeline:
 
     def add(self, text: str) -> IngestReport:
         candidates = self._llm.extract_memories(text)
-        report = IngestReport(source_text=text)
+        extracted_at = time.time()
+        report = IngestReport(source_text=text, extracted_at=extracted_at)
         for candidate in candidates:
-            report.results.append(self._process_candidate(candidate))
+            report.results.append(self._process_candidate(candidate, text, extracted_at))
         return report
 
     def search(self, query: str, limit: int = 5) -> list[MemoryHit]:
@@ -48,7 +51,12 @@ class MemoryPipeline:
     def list_memories(self) -> list[Memory]:
         return self._store.list_all()
 
-    def _process_candidate(self, candidate: ExtractedMemory) -> CandidateResult:
+    def _process_candidate(
+        self,
+        candidate: ExtractedMemory,
+        source_text: str,
+        extracted_at: float,
+    ) -> CandidateResult:
         [vector] = self._embedder.embed([candidate.text])
         similar = [
             hit
@@ -57,16 +65,30 @@ class MemoryPipeline:
         ]
 
         decision = self._gate.evaluate(candidate.text, candidate.type, similar)
+        meta = _ingest_meta(source_text, extracted_at, decision)
 
         if decision.worth < self._settings.worth_threshold:
             return CandidateResult(candidate, decision, "skipped", None)
 
         if decision.operation == "update" and decision.target_id:
-            self._store.update(decision.target_id, candidate.text, candidate.type, vector)
-            return CandidateResult(candidate, decision, "updated", decision.target_id)
+            updated = self._store.update(
+                decision.target_id, candidate.text, candidate.type, vector, meta
+            )
+            return CandidateResult(candidate, decision, "updated", updated.id)
 
         if decision.operation == "skip":
             return CandidateResult(candidate, decision, "skipped", None)
 
-        memory = self._store.add(candidate.text, candidate.type, vector)
+        memory = self._store.add(candidate.text, candidate.type, vector, meta)
         return CandidateResult(candidate, decision, "added", memory.id)
+
+
+def _ingest_meta(source_text: str, extracted_at: float, decision: GateDecision) -> IngestMeta:
+    return IngestMeta(
+        source_text=source_text,
+        extracted_at=extracted_at,
+        confidence=decision.worth,
+        operation=decision.operation,
+        operation_confidence=decision.operation_confidence,
+        target_id=decision.target_id,
+    )
