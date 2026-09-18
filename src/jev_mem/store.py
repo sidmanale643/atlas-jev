@@ -89,8 +89,11 @@ class MemoryStore:
         return memory
 
     def update(self, memory_id: str, text: str, memory_type: str, vector: list[float]) -> None:
+        existing = self.get(memory_id)
+        if existing is None:
+            raise RuntimeError(f"Memory {memory_id} not found")
         self._table.update(
-            where=_id_clause(memory_id),
+            where=_id_clause(existing.id),
             values={
                 "text": text,
                 "type": memory_type,
@@ -100,7 +103,22 @@ class MemoryStore:
         )
 
     def delete(self, memory_id: str) -> None:
-        self._table.delete(_id_clause(memory_id))
+        memory = self.get(memory_id)
+        if memory is None:
+            raise RuntimeError(f"Memory {memory_id} not found")
+        self._table.delete(_id_clause(memory.id))
+
+    def get(self, memory_id: str) -> Memory | None:
+        rows = self._memory_rows()
+        exact = [row for row in rows if row["id"] == memory_id]
+        if exact:
+            return _memory_from_row(exact[0])
+        prefixed = [row for row in rows if row["id"].startswith(memory_id)]
+        if len(prefixed) == 1:
+            return _memory_from_row(prefixed[0])
+        if len(prefixed) > 1:
+            raise RuntimeError(f"Ambiguous memory id prefix: {memory_id}")
+        return None
 
     def search(self, vector: list[float], limit: int = 5) -> list[MemoryHit]:
         if self._table.count_rows() == 0:
