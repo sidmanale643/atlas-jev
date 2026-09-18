@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import lancedb
 import pyarrow as pa
+from lancedb.index import FTS
 
 TABLE_NAME = "memories"
 EVENTS_TABLE_NAME = "memory_events"
@@ -92,7 +93,9 @@ class MemoryEvent:
 @dataclass(frozen=True)
 class MemoryHit:
     memory: Memory
-    distance: float
+    score: float = 0.0
+    distance: float = 0.0
+    relevance: float = 0.0
 
 
 def _optional_str(value: object) -> str | None:
@@ -222,6 +225,11 @@ class MemoryStore:
             _ensure_columns(self._events, _EVENT_COLUMN_DEFAULTS)
         else:
             self._events = self._db.create_table(EVENTS_TABLE_NAME, schema=_events_schema())
+        if not any(
+            index.index_type == "FTS" and "text" in index.columns
+            for index in self._table.list_indices()
+        ):
+            self._table.create_index("text", config=FTS())
 
     def add(self, text: str, memory_type: str, vector: list[float], meta: IngestMeta) -> Memory:
         now = time.time()
@@ -404,7 +412,23 @@ class MemoryStore:
             raise RuntimeError(f"Ambiguous memory id prefix: {memory_id}")
         return None
 
-    def search(self, vector: list[float], limit: int = 5) -> list[MemoryHit]:
+    def search(self, query: str, vector: list[float], limit: int = 5) -> list[MemoryHit]:
+        if self._table.count_rows() == 0:
+            return []
+        rows = (
+            self._table.search(query_type="hybrid")
+            .vector(vector)
+            .text(query)
+            .rerank()
+            .limit(limit)
+            .to_list()
+        )
+        return [
+            MemoryHit(memory=_memory_from_row(row), score=row["_relevance_score"])
+            for row in rows
+        ]
+
+    def recall(self, vector: list[float], limit: int = 5) -> list[MemoryHit]:
         if self._table.count_rows() == 0:
             return []
         rows = self._table.search(vector).limit(limit).to_list()

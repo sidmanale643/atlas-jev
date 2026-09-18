@@ -48,7 +48,7 @@ class _RecordingStore:
         self.added: list[str] = []
         self.updated: list[str] = []
 
-    def search(self, vector: list[float], limit: int) -> list:
+    def recall(self, vector: list[float], limit: int) -> list:
         return []
 
     def add(

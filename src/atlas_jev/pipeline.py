@@ -48,7 +48,7 @@ class MemoryPipeline:
 
     def search(self, query: str, limit: int = 5) -> list[MemoryHit]:
         [vector] = self._embedder.embed([query])
-        return self._store.search(vector, limit=limit)
+        return self._store.search(query, vector, limit=limit)
 
     def list_memories(self) -> list[Memory]:
         return self._store.list_all()
@@ -74,7 +74,7 @@ class MemoryPipeline:
         [vector] = self._embedder.embed([candidate.text])
         similar = [
             hit
-            for hit in self._store.search(vector, limit=self._settings.recall_limit)
+            for hit in self._store.recall(vector, limit=self._settings.recall_limit)
             if hit.distance <= self._settings.recall_distance_threshold
         ]
 

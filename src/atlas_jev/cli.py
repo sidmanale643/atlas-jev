@@ -35,7 +35,7 @@ def main() -> None:
             if not hits:
                 print("No memories found.")
             for hit in hits:
-                print(f"[{hit.distance:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
+                print(f"[{hit.score:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
         case "list":
             memories = pipeline.list_memories()
             if not memories:
