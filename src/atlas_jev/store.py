@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ _MEMORY_COLUMN_DEFAULTS = {
     "target_id": "''",
     "previous_text": "''",
     "previous_type": "''",
+    "versions_json": "'[]'",
     "conflict": "0.0",
 }
 
@@ -137,6 +139,7 @@ def _memories_schema(dim: int) -> pa.Schema:
             pa.field("target_id", pa.string()),
             pa.field("previous_text", pa.string()),
             pa.field("previous_type", pa.string()),
+            pa.field("versions_json", pa.string()),
             pa.field("conflict", pa.float64()),
         ]
     )
@@ -258,6 +261,10 @@ class MemoryStore:
         existing = self.get(memory_id)
         if existing is None:
             raise RuntimeError(f"Memory {memory_id} not found")
+        versions = self._versions(existing)
+        snapshot = next(row for row in self._memory_rows() if row["id"] == existing.id)
+        snapshot.pop("versions_json")
+        versions.append(snapshot)
         now = time.time()
         self._table.update(
             where=_id_clause(existing.id),
@@ -275,6 +282,7 @@ class MemoryStore:
                 "target_id": meta.target_id or existing.id,
                 "previous_text": existing.text,
                 "previous_type": existing.type,
+                "versions_json": json.dumps(versions),
                 "conflict": meta.conflict,
             },
         )
@@ -307,20 +315,13 @@ class MemoryStore:
             raise RuntimeError(f"Memory {memory_id} not found")
         if not existing.previous_text:
             raise RuntimeError(f"Memory {existing.id} has no previous value to revert")
-        restored_type = existing.previous_type or existing.type
-        now = time.time()
-        self._table.update(
-            where=_id_clause(existing.id),
-            values={
-                "text": existing.previous_text,
-                "type": restored_type,
-                "vector": restored_vector,
-                "updated_at": now,
-                "operation": "revert",
-                "previous_text": existing.text,
-                "previous_type": existing.type,
-            },
-        )
+        versions = self._versions(existing)
+        if not versions:
+            raise RuntimeError(f"Memory {existing.id} has no complete previous version")
+        restored = versions.pop()
+        restored.setdefault("vector", restored_vector)
+        restored["versions_json"] = json.dumps(versions)
+        self._table.update(where=_id_clause(existing.id), values=restored)
         reverted = self.get(existing.id)
         if reverted is None:
             raise RuntimeError(f"Memory {existing.id} vanished after revert")
@@ -330,19 +331,60 @@ class MemoryStore:
             candidate_type=reverted.type,
             action_taken="reverted",
             meta=IngestMeta(
-                source_text=existing.source_text,
-                extracted_at=existing.extracted_at,
-                confidence=existing.confidence,
-                extraction_confidence=existing.extraction_confidence,
+                source_text=reverted.source_text,
+                extracted_at=reverted.extracted_at,
+                confidence=reverted.confidence,
+                extraction_confidence=reverted.extraction_confidence,
                 operation="revert",
                 operation_confidence=1.0,
                 target_id=existing.id,
-                conflict=existing.conflict,
+                conflict=reverted.conflict,
             ),
             previous_text=existing.text,
             previous_type=existing.type,
         )
         return reverted
+
+    def _versions(self, memory: Memory) -> list[dict]:
+        row = next(row for row in self._memory_rows() if row["id"] == memory.id)
+        versions = json.loads(row.get("versions_json") or "[]")
+        if versions or not memory.previous_text:
+            return versions
+        events = self.list_events(memory.id)
+        snapshots = []
+        for event in events:
+            if event.action_taken == "reverted":
+                if snapshots:
+                    snapshots.pop()
+                continue
+            if event.action_taken not in {"added", "updated"}:
+                continue
+            snapshot = self._memory_row(
+                Memory(
+                    id=memory.id,
+                    text=event.candidate_text,
+                    type=event.candidate_type,
+                    created_at=memory.created_at,
+                    updated_at=event.created_at,
+                    source_text=event.source_text,
+                    extracted_at=event.extracted_at,
+                    confidence=event.worth,
+                    extraction_confidence=event.extraction_confidence,
+                    operation=event.operation,
+                    operation_confidence=event.operation_confidence,
+                    target_id=event.target_id,
+                    previous_text=event.previous_text,
+                    previous_type=event.previous_type,
+                    conflict=event.conflict,
+                ),
+                [],
+            )
+            snapshot.pop("vector")
+            snapshot.pop("versions_json")
+            snapshots.append(snapshot)
+        if len(snapshots) >= 2 and snapshots[-2]["text"] == memory.previous_text:
+            return snapshots[:-1]
+        raise RuntimeError(f"Memory {memory.id} has no recoverable previous version")
 
     def delete(self, memory_id: str) -> None:
         memory = self.get(memory_id)
@@ -412,6 +454,7 @@ class MemoryStore:
             "target_id": memory.target_id or "",
             "previous_text": memory.previous_text or "",
             "previous_type": memory.previous_type or "",
+            "versions_json": "[]",
             "conflict": memory.conflict,
         }
 
