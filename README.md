@@ -6,59 +6,7 @@ Jev is TypeSafe's judgment model. It does not write the memories. It answers the
 
 On write, Jev scores whether a candidate is worth keeping. It chooses among add, extra detail, and skip. It also scores conflict with an existing memory. On read, Jev scores each hit. Hits that would not help answer the query are dropped.
 
-A write sends this question graph to Jev. Choice questions pick an operation, a target, and a conflict resolution. Noul questions return a score from 0 to 1 for worth and for conflict. The state is the candidate plus nearby existing memories. The answers are worth, operation, target_id, and conflict.
-
-```mermaid
-flowchart TB
-  subgraph questions [Questions]
-    direction LR
-    operation[operation]
-    resolution[resolution]
-    target_memory[target_memory]
-    conflicts_0[conflicts_0]
-  end
-
-  subgraph options [Choices]
-    direction LR
-    add[add]
-    keep[keep]
-    skip[skip]
-    none[none]
-    memory_0[memory_0]
-  end
-
-  worth_remembering[worth_remembering]
-
-  gate["noul gate, one thinking unit"]
-
-  subgraph state [State snapshot]
-    direction LR
-    candidate_memory[candidate_memory]
-    candidate_type[candidate_type]
-    existing_memories[existing_memories]
-  end
-
-  subgraph answers [Final answers]
-    direction LR
-    worth[worth]
-    op_out[operation]
-    target_id[target_id]
-    conflict[conflict]
-  end
-
-  questions --> options
-  options --> worth_remembering
-  worth_remembering --> gate
-  gate --> state
-  state --> answers
-
-  classDef gold fill:#5c4316,stroke:#c4a35a,color:#f3e6c4
-  classDef olive fill:#3f4a14,stroke:#9aaa3a,color:#e8f0c0
-  classDef blue fill:#243044,stroke:#6a8aaa,color:#d0dce8
-  class operation,resolution,target_memory,conflicts_0,add,keep,skip,none,memory_0 gold
-  class worth_remembering,gate,candidate_memory,candidate_type,existing_memories olive
-  class worth,op_out,target_id,conflict blue
-```
+![Ingest flow for add(text)](ingest_add_text_flow_dark.svg)
 
 ## How ingest works
 
