@@ -1,12 +1,12 @@
 import argparse
 from datetime import datetime
 
-from jev_mem.pipeline import IngestReport, MemoryPipeline
-from jev_mem.store import Memory, MemoryEvent
+from atlas_jev.pipeline import IngestReport, MemoryPipeline
+from atlas_jev.store import Memory, MemoryEvent
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="jev-mem", description="Jev-gated memory store")
+    parser = argparse.ArgumentParser(prog="atlas-jev", description="Jev-gated memory store")
     sub = parser.add_subparsers(dest="command", required=True)
 
     add_parser = sub.add_parser("add", help="Ingest text: extract, gate, and store memories")

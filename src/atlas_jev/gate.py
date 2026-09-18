@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 from typesafe_sdk import Choice, Noul
 
-from jev_mem.jev import DEFAULT_JEV_MODEL, JevClient
-from jev_mem.store import MemoryHit
+from atlas_jev.jev import DEFAULT_JEV_MODEL, JevClient
+from atlas_jev.store import MemoryHit
 
 
 @dataclass(frozen=True)

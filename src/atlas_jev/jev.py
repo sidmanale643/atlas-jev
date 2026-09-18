@@ -42,7 +42,7 @@ class JevClient:
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "X-OpenRouter-Title": "jev-mem",
+                "X-OpenRouter-Title": "atlas-jev",
             },
             timeout=30.0,
         )

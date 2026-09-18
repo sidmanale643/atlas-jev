@@ -1,11 +1,11 @@
 import time
 from dataclasses import dataclass, field
 
-from jev_mem.config import Settings, load_settings
-from jev_mem.embeddings import Embedder
-from jev_mem.gate import GateDecision, MemoryGate
-from jev_mem.llm import ExtractedMemory, LLMService
-from jev_mem.store import IngestMeta, Memory, MemoryEvent, MemoryHit, MemoryStore
+from atlas_jev.config import Settings, load_settings
+from atlas_jev.embeddings import Embedder
+from atlas_jev.gate import GateDecision, MemoryGate
+from atlas_jev.llm import ExtractedMemory, LLMService
+from atlas_jev.store import IngestMeta, Memory, MemoryEvent, MemoryHit, MemoryStore
 
 
 @dataclass(frozen=True)
