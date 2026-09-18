@@ -58,35 +58,53 @@ def main() -> None:
 
 
 def _print_ingest(report: IngestReport) -> None:
+    print(f"extracted={_iso(report.extracted_at)}")
+    print(f"source: {report.source_text}")
     if not report.results:
         print("No memories extracted.")
+        return
     for result in report.results:
+        target = f" target={result.decision.target_id[:8]}" if result.decision.target_id else ""
         print(
             f"[{result.action_taken:8s}] ({result.candidate.type:12s}) {result.candidate.text} "
-            f"(worth={result.decision.worth:.2f}, op={result.decision.operation}, "
-            f"op_conf={result.decision.operation_confidence:.2f})"
+            f"(extract_conf={result.candidate.confidence:.2f}, worth={result.decision.worth:.2f}, "
+            f"op={result.decision.operation}, op_conf={result.decision.operation_confidence:.2f}"
+            f"{target} conflict={result.decision.conflict:.2f})"
         )
 
 
 def _format_memory(memory: Memory) -> str:
     previous = f' prev="{memory.previous_text}"' if memory.previous_text else ""
+    target = f" target={memory.target_id[:8]}" if memory.target_id else ""
     return (
-        f"{memory.id[:8]}  ({memory.type:12s}) {memory.text}  "
-        f"worth={memory.confidence:.2f} op={memory.operation or '-'} "
-        f"op_conf={memory.operation_confidence:.2f}{previous}"
+        f"{memory.id[:8]}  ({memory.type:12s}) {memory.text}\n"
+        f"  extracted={_iso(memory.extracted_at)} extract_conf={memory.extraction_confidence:.2f} "
+        f"worth={memory.confidence:.2f} "
+        f"op={memory.operation or '-'} op_conf={memory.operation_confidence:.2f}"
+        f"{target} conflict={memory.conflict:.2f}{previous}\n"
+        f"  source: {memory.source_text}"
     )
 
 
 def _format_event(event: MemoryEvent) -> str:
-    stamp = datetime.fromtimestamp(event.created_at).isoformat(timespec="seconds")
     memory_id = (event.memory_id or "-")[:8]
     previous = f' prev="{event.previous_text}"' if event.previous_text else ""
+    target = f" target={event.target_id[:8]}" if event.target_id else ""
     return (
-        f"{stamp}  [{event.action_taken:8s}] ({event.candidate_type:12s}) {event.candidate_text}  "
-        f"memory={memory_id} worth={event.worth:.2f} op={event.operation} "
-        f"op_conf={event.operation_confidence:.2f}{previous}\n"
+        f"{_iso(event.created_at)}  [{event.action_taken:8s}] ({event.candidate_type:12s}) "
+        f"{event.candidate_text}\n"
+        f"  extracted={_iso(event.extracted_at)} memory={memory_id} "
+        f"extract_conf={event.extraction_confidence:.2f} worth={event.worth:.2f} "
+        f"op={event.operation} op_conf={event.operation_confidence:.2f}"
+        f"{target} conflict={event.conflict:.2f}{previous}\n"
         f"  source: {event.source_text}"
     )
+
+
+def _iso(timestamp: float) -> str:
+    if not timestamp:
+        return "-"
+    return datetime.fromtimestamp(timestamp).isoformat(timespec="seconds")
 
 
 if __name__ == "__main__":
