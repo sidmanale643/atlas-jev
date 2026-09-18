@@ -36,6 +36,7 @@ class MemoryPipeline:
             api_key,
             self._settings.jev_model,
             self._settings.conflict_threshold,
+            self._settings.relevance_threshold,
         )
 
     def add(self, text: str) -> IngestReport:
@@ -48,7 +49,8 @@ class MemoryPipeline:
 
     def search(self, query: str, limit: int = 5) -> list[MemoryHit]:
         [vector] = self._embedder.embed([query])
-        return self._store.search(query, vector, limit=limit)
+        hits = self._store.search(query, vector, limit=limit)
+        return self._gate.filter_relevant(query, hits)
 
     def list_memories(self) -> list[Memory]:
         return self._store.list_all()

@@ -12,7 +12,9 @@ def main() -> None:
     add_parser = sub.add_parser("add", help="Ingest text: extract, gate, and store memories")
     add_parser.add_argument("text", help="Text to extract memories from")
 
-    search_parser = sub.add_parser("search", help="Semantic search over stored memories")
+    search_parser = sub.add_parser(
+        "search", help="Hybrid search, then drop memories Jev judges unrelated"
+    )
     search_parser.add_argument("query", help="Search query")
     search_parser.add_argument("--limit", type=int, default=5)
 
@@ -35,7 +37,7 @@ def main() -> None:
             if not hits:
                 print("No memories found.")
             for hit in hits:
-                print(f"[{hit.score:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
+                print(f"[{hit.score:.3f} rel={hit.relevance:.2f}] {_format_memory(hit.memory)}")
         case "list":
             memories = pipeline.list_memories()
             if not memories:

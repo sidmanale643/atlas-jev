@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from typesafe_sdk import Choice, Noul, NoulCriteria
 
@@ -21,9 +21,11 @@ class MemoryGate:
         api_key: str,
         model: str = DEFAULT_JEV_MODEL,
         conflict_threshold: float = 0.7,
+        relevance_threshold: float = 0.5,
     ) -> None:
         self._client = JevClient(api_key, model)
         self._conflict_threshold = conflict_threshold
+        self._relevance_threshold = relevance_threshold
 
     def evaluate(self, candidate: str, memory_type: str, similar: list[MemoryHit]) -> GateDecision:
         state: dict = {
@@ -148,3 +150,40 @@ class MemoryGate:
             target_id=target_id,
             conflict=conflict,
         )
+
+    def filter_relevant(self, query: str, hits: list[MemoryHit]) -> list[MemoryHit]:
+        if not hits:
+            return []
+        state = {
+            "query": query,
+            "memories": [hit.memory.text for hit in hits],
+        }
+        questions = {
+            f"relevant_{i}": Noul(
+                instructions=(
+                    f"Does `memories[{i}]` contain information that is useful "
+                    "for answering `query`? Sharing a word or a nearby topic "
+                    "is not enough."
+                ),
+                criteria=NoulCriteria(
+                    true=(
+                        "The memory is about the same subject, person, "
+                        "preference, or fact the query is asking about, and "
+                        "would help answer it."
+                    ),
+                    false=(
+                        "The memory is a different subject, only shares a word "
+                        "or topic neighborhood, or would not help answer the "
+                        "query."
+                    ),
+                ),
+            )
+            for i in range(len(hits))
+        }
+        answers = self._client.decide(state, questions)
+        kept = []
+        for i, hit in enumerate(hits):
+            relevance = float(answers[f"relevant_{i}"]["noul"])
+            if relevance >= self._relevance_threshold:
+                kept.append(replace(hit, relevance=relevance))
+        return kept
