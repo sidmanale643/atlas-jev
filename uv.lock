@@ -399,6 +399,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastembed" },
+    { name = "httpx" },
     { name = "lancedb" },
     { name = "openai" },
     { name = "python-dotenv" },
@@ -408,6 +409,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastembed" },
+    { name = "httpx" },
     { name = "lancedb" },
     { name = "openai", specifier = ">=1.0" },
     { name = "python-dotenv" },
