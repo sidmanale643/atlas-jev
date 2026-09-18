@@ -1,6 +1,8 @@
 import argparse
+from datetime import datetime
 
-from jev_mem.pipeline import MemoryPipeline
+from jev_mem.pipeline import IngestReport, MemoryPipeline
+from jev_mem.store import Memory, MemoryEvent
 
 
 def main() -> None:
@@ -16,30 +18,73 @@ def main() -> None:
 
     sub.add_parser("list", help="List all stored memories")
 
+    history_parser = sub.add_parser("history", help="Show gate decisions and memory writes")
+    history_parser.add_argument("memory_id", nargs="?", help="Optional memory id or prefix")
+
+    revert_parser = sub.add_parser("revert", help="Restore a memory's previous value")
+    revert_parser.add_argument("memory_id", help="Memory id or unique prefix")
+
     args = parser.parse_args()
     pipeline = MemoryPipeline()
 
-    if args.command == "add":
-        report = pipeline.add(args.text)
-        if not report.results:
-            print("No memories extracted.")
-        for result in report.results:
-            print(
-                f"[{result.action_taken:7s}] ({result.candidate.type:12s}) {result.candidate.text} "
-                f"(worth={result.decision.worth:.2f}, op={result.decision.operation})"
-            )
-    elif args.command == "search":
-        hits = pipeline.search(args.query, limit=args.limit)
-        if not hits:
-            print("No memories found.")
-        for hit in hits:
-            print(f"[{hit.distance:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
-    elif args.command == "list":
-        memories = pipeline.list_memories()
-        if not memories:
-            print("No memories stored.")
-        for memory in memories:
-            print(f"{memory.id[:8]}  ({memory.type:12s}) {memory.text}")
+    match args.command:
+        case "add":
+            _print_ingest(pipeline.add(args.text))
+        case "search":
+            hits = pipeline.search(args.query, limit=args.limit)
+            if not hits:
+                print("No memories found.")
+            for hit in hits:
+                print(f"[{hit.distance:.3f}] ({hit.memory.type:12s}) {hit.memory.text}")
+        case "list":
+            memories = pipeline.list_memories()
+            if not memories:
+                print("No memories stored.")
+            for memory in memories:
+                print(_format_memory(memory))
+        case "history":
+            events = pipeline.history(args.memory_id)
+            if not events:
+                print("No decision history.")
+            for event in events:
+                print(_format_event(event))
+        case "revert":
+            memory = pipeline.revert(args.memory_id)
+            print(_format_memory(memory))
+        case _:
+            raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _print_ingest(report: IngestReport) -> None:
+    if not report.results:
+        print("No memories extracted.")
+    for result in report.results:
+        print(
+            f"[{result.action_taken:8s}] ({result.candidate.type:12s}) {result.candidate.text} "
+            f"(worth={result.decision.worth:.2f}, op={result.decision.operation}, "
+            f"op_conf={result.decision.operation_confidence:.2f})"
+        )
+
+
+def _format_memory(memory: Memory) -> str:
+    previous = f' prev="{memory.previous_text}"' if memory.previous_text else ""
+    return (
+        f"{memory.id[:8]}  ({memory.type:12s}) {memory.text}  "
+        f"worth={memory.confidence:.2f} op={memory.operation or '-'} "
+        f"op_conf={memory.operation_confidence:.2f}{previous}"
+    )
+
+
+def _format_event(event: MemoryEvent) -> str:
+    stamp = datetime.fromtimestamp(event.created_at).isoformat(timespec="seconds")
+    memory_id = (event.memory_id or "-")[:8]
+    previous = f' prev="{event.previous_text}"' if event.previous_text else ""
+    return (
+        f"{stamp}  [{event.action_taken:8s}] ({event.candidate_type:12s}) {event.candidate_text}  "
+        f"memory={memory_id} worth={event.worth:.2f} op={event.operation} "
+        f"op_conf={event.operation_confidence:.2f}{previous}\n"
+        f"  source: {event.source_text}"
+    )
 
 
 if __name__ == "__main__":
