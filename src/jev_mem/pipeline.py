@@ -5,7 +5,7 @@ from jev_mem.config import Settings, load_settings
 from jev_mem.embeddings import Embedder
 from jev_mem.gate import GateDecision, MemoryGate
 from jev_mem.llm import ExtractedMemory, LLMService
-from jev_mem.store import IngestMeta, Memory, MemoryHit, MemoryStore
+from jev_mem.store import IngestMeta, Memory, MemoryEvent, MemoryHit, MemoryStore
 
 
 @dataclass(frozen=True)
@@ -51,6 +51,9 @@ class MemoryPipeline:
     def list_memories(self) -> list[Memory]:
         return self._store.list_all()
 
+    def history(self, memory_id: str | None = None) -> list[MemoryEvent]:
+        return self._store.list_events(memory_id)
+
     def _process_candidate(
         self,
         candidate: ExtractedMemory,
@@ -68,6 +71,7 @@ class MemoryPipeline:
         meta = _ingest_meta(source_text, extracted_at, decision)
 
         if decision.worth < self._settings.worth_threshold:
+            self._store.record_skip(candidate.text, candidate.type, meta)
             return CandidateResult(candidate, decision, "skipped", None)
 
         if decision.operation == "update" and decision.target_id:
@@ -77,6 +81,7 @@ class MemoryPipeline:
             return CandidateResult(candidate, decision, "updated", updated.id)
 
         if decision.operation == "skip":
+            self._store.record_skip(candidate.text, candidate.type, meta)
             return CandidateResult(candidate, decision, "skipped", None)
 
         memory = self._store.add(candidate.text, candidate.type, vector, meta)
